@@ -2,12 +2,14 @@
 """Fuel YAQL real-time console.
 Allow fast and easy test your YAQL expressions on live cluster.
 Usage:
-    fuyaql.py CLUSTER_ID
+    fuyaql.py [-v...] CLUSTER_ID
     fuyaql.py -h
     fuyaql.py --version
+
 Options:
-    -h --help       show this help
-    --version       show version
+    -v         verbosity level. Use more than one time to raise level (like -vvvv)
+    -h --help  show this help
+    --version  show version
 
 Arguments:
     CLUSTER_ID      Cluster ID for which YAQL data will be gathered
@@ -17,7 +19,6 @@ import json
 import logging
 from docopt import docopt
 from nailgun import consts
-from nailgun import lcm
 from nailgun import objects
 from nailgun import yaql_ext
 from nailgun.db import db
@@ -54,8 +55,9 @@ class Options:
         """
         self.args = docopt(__doc__, version='0.2')
         self.options = self.args
+        loglevel = (5 - self.args['-v'])*10 if self.args['-v'] < 5 else 10
         logging.basicConfig(
-                level=logging.DEBUG,
+                level=loglevel,
                 format='%(asctime)s %(name)-30s %(levelname)-9s %(message)s')
         self.logger = logging.getLogger(__name__)
         self.logger.debug('Passed arguments is: %s', str(self.args))
@@ -67,10 +69,8 @@ class Fyaql:
         self.logger = options.logger
         self.cluster_id = self.options['CLUSTER_ID']
         self.node_id = 'master'
-        self.cluster = self.get_cluster()
-        self.logger.debug('Cluster instance is: %s', self.cluster)
-        self.nodes_to_deploy = self.get_nodes_to_deploy()
-        self.logger.debug('Nodes to deploy are: %s', self.nodes_to_deploy)
+        self.cluster = None
+        self.nodes_to_deploy = None
         self.supertask = None
         self.deployment = None
         self.deployment_info = None
@@ -80,13 +80,16 @@ class Fyaql:
         self.context = None
         self.yaql_engine = None
 
-    def get_cluster(self):
-        return db().query(Cluster).get(self.cluster_id)
+    def get_cluster(self, cluster_id=None):
+        if not cluster_id:
+            cluster_id = self.cluster_id
+        return db().query(Cluster).get(cluster_id)
 
     def get_nodes_to_deploy(self):
-        return list(
+        self.nodes_to_deploy = list(
             objects.Cluster.get_nodes_not_for_deletion(self.cluster).all()
         )
+        self.logger.debug('Nodes to deploy are: %s', self.nodes_to_deploy)
 
     def get_supertask(self):
         self.supertask = Task(
@@ -125,7 +128,10 @@ class Fyaql:
     def get_current_state(self):
         last_run = objects.TransactionCollection.get_last_succeed_run(
             self.cluster)
-        self.current_state = last_run.deployment_info
+        try:
+            self.current_state = last_run.deployment_info
+        except AttributeError:
+            self.current_state = {}
         self.logger.debug('Current state is: %s', self.current_state)
 
     def get_contexts(self):
@@ -161,8 +167,11 @@ class Fyaql:
         return res
 
     def create_structure(self):
+        self.cluster = self.get_cluster()
+        self.logger.debug('Cluster instance is: %s', self.cluster)
         if not self.cluster:
             return
+        self.get_nodes_to_deploy()
         self.get_supertask()
         self.get_deployment_cycle()
         self.get_deployment_info()
@@ -194,9 +203,20 @@ class Fyaql:
         print('Currently used node id is: %s' % self.node_id)
 
     def use_cluster(self, cluster_id):
-        pass
+        cluster = self.get_cluster(cluster_id)
+        if not cluster:
+            print("There is no cluster with id %s, can't switch to it" %
+                  cluster_id)
+            return
+        self.cluster_id = cluster_id
+        self.logger.info("Cluster changed, reset default node id to master")
+        self.node_id = 'master'
+        self.create_structure()
 
     def use_node(self, node_id):
+        if node_id not in [str(node.id) for node in self.cluster.nodes]:
+            print('There is no node with id %s in cluster %s' %
+                  (node_id, self.cluster_id))
         self.node_id = node_id
         self.update_contexts()
 
