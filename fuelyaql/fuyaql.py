@@ -7,7 +7,8 @@ Usage:
     fuyaql.py --version
 
 Options:
-    -v         verbosity level. Use more than one time to raise level (like -vvvv)
+    -v         verbosity level. Use more than one time to raise level
+               (like -vvvv)
     -h --help  show this help
     --version  show version
 
@@ -18,14 +19,17 @@ Arguments:
 import json
 import logging
 from docopt import docopt
-from nailgun import consts
-from nailgun import objects
-from nailgun import yaql_ext
-from nailgun.db import db
-from nailgun.db.sqlalchemy.models import Cluster
-from nailgun.db.sqlalchemy.models import Task
-from nailgun.orchestrator import deployment_serializers
-from nailgun.task.task import ClusterTransaction
+try:
+    from nailgun import consts
+    from nailgun import objects
+    from nailgun import yaql_ext
+    from nailgun.db import db
+    from nailgun.db.sqlalchemy.models import Cluster
+    from nailgun.db.sqlalchemy.models import Task
+    from nailgun.orchestrator import deployment_serializers
+    from nailgun.task.task import ClusterTransaction
+except ImportError:
+    pass
 
 reserved_commands = {
     ':show cluster': 'show_cluster',
@@ -251,9 +255,11 @@ class Fyaql:
                 print json.dumps(result, indent=4)
 
 
-if __name__ == '__main__':
+def main():
     opts = Options()
     interpret = Fyaql(opts)
     interpret.create_structure()
     interpret.get_console()
 
+if __name__ == '__main__':
+    main()
