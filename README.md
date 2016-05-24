@@ -8,9 +8,10 @@ How to use:
 checkout this repo on Fuel master node, run
 
 > python setup.py install
-> fuelyaql <CLUSTER_ID>
 
-where <CLUSTER_ID> is id of existing cluster which you can get by run
+> fuelyaql 'CLUSTER_ID'
+
+where 'CLUSTER_ID' is id of existing cluster which you can get by run
 
 > fuel env
 
@@ -23,21 +24,25 @@ there you can evaluate all functions and conditions you need just by entering
 them, for example:
 
 > fuel-yaql> changed($)
+
 > true
 
 This console has some internal commands. There they are:
 
 > fuel-yaql> :show cluster
+
 > Cluster id is: 1, name is: test
 
 shows you cluster you currently use.
 
 > fuel-yaql> :show node
+
 > Currently used node id is: master
 
 shows you node in this cluster for which conditions will be evaluated.
 
 > fuel-yaql> :show nodes
+
 > Cluster has nodes with ids: {1: 'controller'}
 
 shows you all nodes in this cluster
