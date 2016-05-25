@@ -16,29 +16,20 @@ Arguments:
     CLUSTER_ID      Cluster ID for which YAQL data will be gathered
 """
 
+import completion
 import json
 import logging
+import readline
 from docopt import docopt
-try:
-    from nailgun import consts
-    from nailgun import objects
-    from nailgun import yaql_ext
-    from nailgun.db import db
-    from nailgun.db.sqlalchemy.models import Cluster
-    from nailgun.db.sqlalchemy.models import Task
-    from nailgun.orchestrator import deployment_serializers
-    from nailgun.task.task import ClusterTransaction
-except ImportError:
-    pass
-
-reserved_commands = {
-    ':show cluster': 'show_cluster',
-    ':show nodes': 'show_nodes',
-    ':show node': 'show_node',
-    ':use cluster': 'use_cluster',
-    ':use node': 'use_node',
-    ':load lastrun': 'update_old_context',
-}
+from f_consts import reserved_commands
+from nailgun import consts
+from nailgun import objects
+from nailgun import yaql_ext
+from nailgun.db import db
+from nailgun.db.sqlalchemy.models import Cluster
+from nailgun.db.sqlalchemy.models import Task
+from nailgun.orchestrator import deployment_serializers
+from nailgun.task.task import ClusterTransaction
 
 
 class Options:
@@ -57,7 +48,7 @@ class Options:
     def _read_options(self):
         """ Reads command line options and saves it to self.args hash.
         """
-        self.args = docopt(__doc__, version='0.2')
+        self.args = docopt(__doc__, version='0.3')
         self.options = self.args
         loglevel = (5 - self.args['-v'])*10 if self.args['-v'] < 5 else 10
         logging.basicConfig(
@@ -73,13 +64,13 @@ class Fyaql:
         self.logger = options.logger
         self.cluster_id = self.options['CLUSTER_ID']
         self.node_id = 'master'
+
         self.cluster = None
         self.nodes_to_deploy = None
-        self.supertask = None
-        self.deployment = None
-        self.deployment_info = None
+
         self.expected_state = None
-        self.deployment_tasks = None
+
+        self.old_context_task = None
         self.current_state = None
         self.context = None
         self.yaql_engine = None
@@ -95,45 +86,22 @@ class Fyaql:
         )
         self.logger.debug('Nodes to deploy are: %s', self.nodes_to_deploy)
 
-    def get_supertask(self):
-        self.supertask = Task(
-            name=consts.TASK_NAMES.deploy, cluster=self.cluster,
-            status=consts.TASK_STATUSES.pending)
-        self.logger.debug('Supertask instance is: %s', self.supertask)
-
-    def get_deployment_cycle(self):
-        self.deployment = self.supertask.create_subtask(
-                name=consts.TASK_NAMES.deployment,
-                status=consts.TASK_STATUSES.pending
-            )
-        self.logger.debug('Deployment task instance is: %s', self.deployment)
-
-    def get_deployment_info(self):
-        self.deployment_info = deployment_serializers.serialize_for_lcm(
-            self.deployment.cluster,
+    def get_real_expected_state(self):
+        expected_deployment_info = deployment_serializers.serialize_for_lcm(
+            self.cluster,
             self.nodes_to_deploy
         )
-        self.logger.debug('Deployment info is: %s', self.deployment_info)
-
-    def get_expected_state(self):
-        self.expected_state = ClusterTransaction._save_deployment_info(
-            self.deployment,
-            self.deployment_info
-        )
+        #self.logger.debug('Deployment info is: %s', expected_deployment_info)
+        self.expected_state = {node['uid']: node for node in expected_deployment_info}
         self.logger.debug('Expected state is %s', self.expected_state)
 
-    def get_tasks(self):
-        self.deployment_tasks = objects.Cluster.get_deployment_tasks(
-            self.deployment.cluster,
-            None
-        )
-        self.logger.debug('Deployment tasks are %s', self.deployment_tasks)
+    def get_last_successful_task(self):
+        self.old_context_task = objects.TransactionCollection.get_last_succeed_run(
+            self.cluster)
 
     def get_current_state(self):
-        last_run = objects.TransactionCollection.get_last_succeed_run(
-            self.cluster)
         try:
-            self.current_state = last_run.deployment_info
+            self.current_state = self.old_context_task.deployment_info
         except AttributeError:
             self.current_state = {}
         self.logger.debug('Current state is: %s', self.current_state)
@@ -176,11 +144,8 @@ class Fyaql:
         if not self.cluster:
             return
         self.get_nodes_to_deploy()
-        self.get_supertask()
-        self.get_deployment_cycle()
-        self.get_deployment_info()
-        self.get_expected_state()
-        self.get_tasks()
+        self.get_real_expected_state()
+        self.get_last_successful_task()
         self.get_current_state()
         self.get_contexts()
         self.create_evaluator()
@@ -196,6 +161,33 @@ class Fyaql:
     def show_cluster(self):
         print('Cluster id is: %s, name is: %s' %
               (self.cluster.id, self.cluster.name))
+
+    def show_tasks(self):
+        tasks = [task.id for task in self.cluster.tasks if task.deployment_info]
+        print('This cluster has next ids which you can use as context ' +
+              'sources: %s' % tasks)
+        if self.old_context_task.id in tasks:
+            print('Currently task with id %s is used as old context source' %
+                  self.old_context_task.id)
+
+    def use_old_context_from_task(self, task_id):
+        tasks = [task for task in self.cluster.tasks if task.deployment_info]
+        task = [task for task in tasks if str(task.id) == task_id]
+        if not task:
+            print("There is no task with id %s, can't switch to it" % task_id)
+            return
+        self.old_context_task = task[0]
+        self.get_current_state()
+        self.update_contexts()
+
+    def use_new_context_from_task(self, task_id):
+        tasks = [task for task in self.cluster.tasks if task.deployment_info]
+        task = [task for task in tasks if str(task.id) == task_id]
+        if not task:
+            print("There is no task with id %s, can't switch to it" % task_id)
+            return
+        self.expected_state = task[0].deployment_info
+        self.update_contexts()
 
     def show_nodes(self):
         nodes_ids = {}
@@ -223,9 +215,6 @@ class Fyaql:
                   (node_id, self.cluster_id))
         self.node_id = node_id
         self.update_contexts()
-
-    def load_lastrun(self):
-        pass
 
     def run_internal_command(self, command, value):
         if command not in reserved_commands:
@@ -256,6 +245,11 @@ class Fyaql:
 
 
 def main():
+    readline.set_completer_delims(r'''`~!@#$%^&*()-=+[{]}\|;'",<>/?''')
+    readline.set_completer(completion.FuCompleter(
+        reserved_commands.keys()
+    ).complete)
+    readline.parse_and_bind('tab: complete')
     opts = Options()
     interpret = Fyaql(opts)
     interpret.create_structure()

@@ -55,6 +55,24 @@ will switch contexts to another cluster
 
 will switch contexts to another node
 
+> fuel-yaql> :show tasks
+
+shows all tasks in 'deployment', 'error', 'ready' and 'pending' states for
+currently selected cluster. In other words, this commands represent to you
+list of tasks which you can use as a context.
+
+> fuel-yaql> :oldcontext task 5
+
+will switch *old* context to context of pointed task. It can be worthy if you
+want to evaluate expression not for current cluster state, but for old one.
+
+> fuel-yaql> :newcontext task 10
+
+will switch *new* context to context of pointed task. It can be worthy the same
+way as *:oldcontext* command. Maybe you should know that there is no
+restriction to have old context really older than new context - you can switch
+them as you want
+
 
 Fuel itself has several internal yaql functions which is not included to base
 yaql interpreter. There they are:
@@ -77,3 +95,29 @@ parentheses returns non-False
 
 I believe, it is mostly all you need to debug yaql expressions on fuel-node. For
 any questions - don't hesitate ask me.
+
+# Changelog
+
+## 0.3
+
+### Added
+
+* changelog
+* switched to readline, so input line doesn't looks like telnet one
+* internal commands autocomplit by Tab
+* internal commands ':oldcontext task' and ':newcontext task' added
+
+### Changed
+
+* not creating default existing context as a task anymore. It allows to not
+  touch DB for a creating temporary task
+
+## 0.2
+
+### Added
+
+* first usable version
+
+## 0.1
+
+* proof of concept created
