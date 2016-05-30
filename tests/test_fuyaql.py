@@ -52,6 +52,7 @@ class TestFuyaql:
         interpret.current_state = old_context
         interpret.node_id = '1'
         interpret.get_contexts()
+        interpret.update_contexts()
         interpret.create_evaluator()
         assert interpret.evaluate('changed($)')
         assert interpret.evaluate('changed($.roles)') is False
@@ -61,6 +62,7 @@ class TestFuyaql:
         interpret.current_state = {}
         interpret.node_id = '1'
         interpret.get_contexts()
+        interpret.update_contexts()
         interpret.create_evaluator()
         assert interpret.evaluate('changed($)')
         assert interpret.evaluate('changed($.roles)')

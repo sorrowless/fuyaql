@@ -2,34 +2,38 @@
 """Fuel YAQL real-time console.
 Allow fast and easy test your YAQL expressions on live cluster.
 Usage:
-    fuyaql.py [-v...] CLUSTER_ID
+    fuyaql.py [-v...] [-n NODE] CLUSTER_ID
+    fuyaql.py [-n NODE] -o OLD_CONTEXT -x EXPECTED_CONTEXT -e EXPRESSION
     fuyaql.py -h
     fuyaql.py --version
 
 Options:
-    -v         verbosity level. Use more than one time to raise level
-               (like -vvvv)
-    -h --help  show this help
-    --version  show version
+    -v                              verbosity level. Use more than one time to raise level
+                                    (like -vvvv)
+    -n --node NODE                  node which will used to compare contexts [default: master]
+    -o --old OLD_CONTEXT            json file which will be used as a new context
+    -x --expected EXPECTED_CONTEXT  json file which will be used as expected context
+    -e --expression EXPRESSION      expression which should be evaluated
+    -h --help                       show this help
+    --version                       show version
 
 Arguments:
-    CLUSTER_ID      Cluster ID for which YAQL data will be gathered
+    CLUSTER_ID  Cluster ID for which YAQL data will be gathered
 """
 
 import completion
 import json
 import logging
+import os
 import readline
+import sys
 from docopt import docopt
 from f_consts import reserved_commands
-from nailgun import consts
 from nailgun import objects
 from nailgun import yaql_ext
 from nailgun.db import db
 from nailgun.db.sqlalchemy.models import Cluster
-from nailgun.db.sqlalchemy.models import Task
 from nailgun.orchestrator import deployment_serializers
-from nailgun.task.task import ClusterTransaction
 
 
 class Options:
@@ -48,7 +52,7 @@ class Options:
     def _read_options(self):
         """ Reads command line options and saves it to self.args hash.
         """
-        self.args = docopt(__doc__, version='0.3')
+        self.args = docopt(__doc__, version='0.4')
         self.options = self.args
         loglevel = (5 - self.args['-v'])*10 if self.args['-v'] < 5 else 10
         logging.basicConfig(
@@ -63,7 +67,7 @@ class Fyaql:
         self.options = options.options
         self.logger = options.logger
         self.cluster_id = self.options['CLUSTER_ID']
-        self.node_id = 'master'
+        self.node_id = self.options['--node']
 
         self.cluster = None
         self.nodes_to_deploy = None
@@ -91,7 +95,6 @@ class Fyaql:
             self.cluster,
             self.nodes_to_deploy
         )
-        #self.logger.debug('Deployment info is: %s', expected_deployment_info)
         self.expected_state = {node['uid']: node for node in expected_deployment_info}
         self.logger.debug('Expected state is %s', self.expected_state)
 
@@ -111,7 +114,6 @@ class Fyaql:
             add_serializers=True, add_datadiff=True
         )
         self.context = main_yaql_context.create_child_context()
-        self.update_contexts()
 
     def update_contexts(self):
         try:
@@ -148,6 +150,7 @@ class Fyaql:
         self.get_last_successful_task()
         self.get_current_state()
         self.get_contexts()
+        self.update_contexts()
         self.create_evaluator()
 
     def parse_command(self, command):
@@ -244,6 +247,33 @@ class Fyaql:
                 print json.dumps(result, indent=4)
 
 
+def lean_contexts(opts):
+    evaluator = Fyaql(opts)
+    try:
+        current_path = evaluator.options['--old']
+        with open(os.path.expanduser(current_path), 'r') as f:
+            current_state = json.load(f)
+        expected_path = evaluator.options['--expected']
+        with open(os.path.expanduser(expected_path), 'r') as f:
+            expected_state = json.load(f)
+    except IOError:
+        sys.exit(1)
+    evaluator.get_contexts()
+    evaluator.context['$%new'] = expected_state
+    evaluator.context['$%old'] = current_state
+    evaluator.create_evaluator()
+
+    expression = evaluator.options['--expression']
+    try:
+        parsed_exp = evaluator.yaql_engine(expression)
+        res = parsed_exp.evaluate(data=evaluator.context['$%new'],
+                            context=evaluator.context)
+        result = 0
+    except:
+        result = 1
+    sys.exit(result)
+
+
 def main():
     readline.set_completer_delims(r'''`~!@#$%^&*()-=+[{]}\|;'",<>/?''')
     readline.set_completer(completion.FuCompleter(
@@ -251,6 +281,9 @@ def main():
     ).complete)
     readline.parse_and_bind('tab: complete')
     opts = Options()
+    # If there is passed contexts - just compare them and exit
+    if opts.options['--old']:
+        lean_contexts(opts)
     interpret = Fyaql(opts)
     interpret.create_structure()
     interpret.get_console()
