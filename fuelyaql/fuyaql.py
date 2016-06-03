@@ -52,7 +52,7 @@ class Options:
     def _read_options(self):
         """ Reads command line options and saves it to self.args hash.
         """
-        self.args = docopt(__doc__, version='0.4')
+        self.args = docopt(__doc__, version='0.5')
         self.options = self.args
         loglevel = (5 - self.args['-v'])*10 if self.args['-v'] < 5 else 10
         logging.basicConfig(
@@ -63,9 +63,9 @@ class Options:
 
 
 class Fyaql:
-    def __init__(self, options):
-        self.options = options.options
-        self.logger = options.logger
+    def __init__(self, options, logger):
+        self.options = options
+        self.logger = logger
         self.cluster_id = self.options['CLUSTER_ID']
         self.node_id = self.options['--node']
 
@@ -244,11 +244,11 @@ class Fyaql:
                 self.run_internal_command(command, value)
             else:
                 result = self.evaluate(command)
-                print json.dumps(result, indent=4)
+                print(json.dumps(result, indent=4))
 
 
 def lean_contexts(opts):
-    evaluator = Fyaql(opts)
+    evaluator = Fyaql(opts.options, opts.logger)
     try:
         current_path = evaluator.options['--old']
         with open(os.path.expanduser(current_path), 'r') as f:
@@ -267,7 +267,7 @@ def lean_contexts(opts):
     try:
         parsed_exp = evaluator.yaql_engine(expression)
         res = parsed_exp.evaluate(data=evaluator.context['$%new'],
-                            context=evaluator.context)
+                                  context=evaluator.context)
         result = 0
     except:
         result = 1
@@ -284,7 +284,7 @@ def main():
     # If there is passed contexts - just compare them and exit
     if opts.options['--old']:
         lean_contexts(opts)
-    interpret = Fyaql(opts)
+    interpret = Fyaql(opts.options, opts.logger)
     interpret.create_structure()
     interpret.get_console()
 
