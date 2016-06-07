@@ -44,7 +44,7 @@ class TestFuyaql:
     def interpret(self, opts):
         sys.argv = opts
         options = fuyaql.Options()
-        interpret = fuyaql.Fyaql(options)
+        interpret = fuyaql.Fyaql(options.logger)
         return interpret
 
     def test_changed(self, interpret, old_context, new_context):
@@ -75,4 +75,16 @@ class TestFuyaql:
     def test_internal_use_command(self, interpret, new_context):
         command, value = interpret.parse_command(':use cluster 1')
         assert command == ':use cluster'
-        assert value is '1'
+        assert value == '1'
+
+    def test_internal_context_commands(self, interpret, new_context):
+        command, value = interpret.parse_command(':oldcontext task 5')
+        assert command == ':oldcontext task'
+        assert value == '5'
+        command, value = interpret.parse_command(':newcontext task 10')
+        assert command == ':newcontext task'
+        assert value == '10'
+
+    def test_unknown_internal_command(self, interpret, new_context):
+        result = interpret.run_internal_command(':some unknown command', None)
+        assert result is False

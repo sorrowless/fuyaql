@@ -98,26 +98,36 @@ any questions - don't hesitate ask me.
 
 # Changelog
 
+## 0.6
+
+[*] internal fixes, tests added
+
+## 0.5
+
+[+] opportunity to run fuyaql with predefined contexts and expression and return
+    a result
+
+## 0.4
+
+[*] internal fixes
+
 ## 0.3
 
-### Added
+[+] changelog
 
-* changelog
-* switched to readline, so input line doesn't looks like telnet one
-* internal commands autocomplit by Tab
-* internal commands ':oldcontext task' and ':newcontext task' added
+[+] switched to readline, so input line doesn't looks like telnet one
 
-### Changed
+[+] internal commands autocomplit by Tab
 
-* not creating default existing context as a task anymore. It allows to not
+[+] internal commands ':oldcontext task' and ':newcontext task' added
+
+[*] not creating default existing context as a task anymore. It allows to not
   touch DB for a creating temporary task
 
 ## 0.2
 
-### Added
-
-* first usable version
+[+] first usable version
 
 ## 0.1
 
-* proof of concept created
+[+] proof of concept created
